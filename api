@@ -1,0 +1,69 @@
+export default async function handler(req, res) {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Server API key missing' });
+
+    const { image, mimeType, prompt } = req.body;
+    const systemPrompt = `You are an elite Autonomous Graphic Design AI. Output ONLY a valid JSON object with NO markdown syntax wrappers.
+    JSON Structure:
+    {
+      "background_color": "#HEX",
+      "shapes": [
+         { "type": "rect", "x": number, "y": number, "w": number, "h": number, "rx": number, "fill": "#HEX or none", "stroke": "#HEX or none", "stroke_width": number },
+         { "type": "circle", "cx": number, "cy": number, "r": number, "fill": "#HEX or none", "stroke": "#HEX or none", "stroke_width": number },
+         { "type": "path", "d": "SVG path data string", "fill": "#HEX or none", "stroke": "#HEX or none", "stroke_width": number }
+      ],
+      "texts": [
+         { "content": "Text string", "x": number, "y": number, "font_size": number, "font_family": "Arial", "font_weight": "bold", "fill": "#HEX" }
+      ]
+    }
+    Canvas resolution is strictly 1600x1000 pixels.`;
+
+    try {
+        let contents = [];
+        if (image) {
+            contents = [
+                { inline_data: { mime_type: mimeType, data: image } },
+                { text: systemPrompt }
+            ];
+        } else {
+            contents = [{ text: prompt + "\n\n" + systemPrompt }];
+        }
+
+        const apiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: contents }] })
+        });
+
+        const data = await apiRes.json();
+        if (data.error) throw new Error(data.error.message);
+
+        let rawText = data.candidates[0].content.parts[0].text.trim();
+        rawText = rawText.replace(/```json\s*|\s*```/g, '').trim();
+        const blueprint = JSON.parse(rawText);
+
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="100%" height="100%">`;
+        svg += `<rect width="1600" height="1000" fill="${blueprint.background_color || '#111'}"/>`;
+
+        if (blueprint.shapes) {
+            blueprint.shapes.forEach(s => {
+                if (s.type === 'rect') svg += `<rect x="${s.x||0}" y="${s.y||0}" width="${s.w||100}" height="${s.h||100}" rx="${s.rx||0}" fill="${s.fill||'none'}" stroke="${s.stroke||'none'}" stroke-width="${s.stroke_width||1}"/>`;
+                else if (s.type === 'circle') svg += `<circle cx="${s.cx||100}" cy="${s.cy||100}" r="${s.r||50}" fill="${s.fill||'none'}" stroke="${s.stroke||'none'}" stroke-width="${s.stroke_width||1}"/>`;
+                else if (s.type === 'path') svg += `<path d="${s.d}" fill="${s.fill||'none'}" stroke="${s.stroke||'none'}" stroke-width="${s.stroke_width||1}"/>`;
+            });
+        }
+
+        if (blueprint.texts) {
+            blueprint.texts.forEach(t => {
+                svg += `<text x="${t.x||100}" y="${t.y||100}" fill="${t.fill||'#FFF'}" font-size="${t.font_size||48}" font-family="${t.font_family||'Arial'}" font-weight="${t.font_weight||'bold'}">${t.content}</text>`;
+            });
+        }
+        svg += `</svg>`;
+
+        res.status(200).json({ svg });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+}
