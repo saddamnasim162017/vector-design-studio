@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vector Design Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white min-h-screen p-4 sm:p-8">
+    <div class="max-w-3xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-cyan-400 mb-2">🤖 AI Vector Design Studio</h1>
+            <p class="text-gray-400">Photo upload karo ya prompt likho, aur instant editable SVG vector design pao!</p>
+        </header>
+
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-6">
+            <!-- Mode Selection -->
+            <div class="flex gap-6 border-b border-gray-800 pb-4">
+                <label class="flex items-center cursor-pointer text-cyan-400 font-semibold">
+                    <input type="radio" name="mode" value="image" checked onclick="switchMode('image')" class="mr-2"> Upload Image
+                </label>
+                <label class="flex items-center cursor-pointer text-cyan-400 font-semibold">
+                    <input type="radio" name="mode" value="text" onclick="switchMode('text')" class="mr-2"> Text Prompt
+                </label>
+            </div>
+
+            <!-- Image Section -->
+            <div id="imageSection">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Design Image Select Karein:</label>
+                <input type="file" id="imageFile" accept="image/*" class="w-full text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-cyan-600 file:text-white cursor-pointer">
+            </div>
+
+            <!-- Text Section -->
+            <div id="textSection" class="hidden">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Bataiye kaisa design chahiye:</label>
+                <textarea id="textPrompt" rows="3" placeholder="Example: A sharp geometric panther logo with gold neon lines..." class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-cyan-400"></textarea>
+            </div>
+
+            <button onclick="generate()" id="btn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 font-bold py-3 px-6 rounded-xl transition shadow-lg">
+                🚀 Generate Design
+            </button>
+
+            <!-- Loading -->
+            <div id="loading" class="hidden text-center py-4">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-cyan-400 border-t-transparent"></div>
+                <p class="text-cyan-300 mt-2 text-sm">AI vector design generate ho raha hai...</p>
+            </div>
+
+            <!-- Result -->
+            <div id="result" class="hidden border-t border-gray-800 pt-6 space-y-4">
+                <h3 class="text-xl font-bold text-green-400">✅ Vector Design Ready!</h3>
+                <div id="svgContainer" class="bg-black p-4 rounded-xl flex justify-center border border-gray-800 overflow-auto max-h-96"></div>
+                <a id="downloadBtn" download="design.svg" class="block text-center bg-green-600 hover:bg-green-500 font-bold py-3 px-6 rounded-xl transition text-white">
+                    📥 Download Editable SVG File
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchMode(m) {
+            document.getElementById('imageSection').classList.toggle('hidden', m !== 'image');
+            document.getElementById('textSection').classList.toggle('hidden', m !== 'text');
+        }
+
+        async function generate() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            loading.classList.remove('hidden');
+            result.classList.add('hidden');
+
+            try {
+                let body = {};
+                if (mode === 'image') {
+                    const file = document.getElementById('imageFile').files[0];
+                    if (!file) { alert('Image choose karein!'); loading.classList.add('hidden'); return; }
+                    const reader = new FileReader();
+                    body.image = await new Promise((res) => {
+                        reader.onload = () => res(reader.result.split(',')[1]);
+                        reader.readAsDataURL(file);
+                    });
+                    body.mimeType = file.type;
+                } else {
+                    const prompt = document.getElementById('textPrompt').value.trim();
+                    if (!prompt) { alert('Prompt likhein!'); loading.classList.add('hidden'); return; }
+                    body.prompt = prompt;
+                }
+
+                const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                document.getElementById('svgContainer').innerHTML = data.svg;
+                const blob = new Blob([data.svg], { type: 'image/svg+xml' });
+                document.getElementById('downloadBtn').href = URL.createObjectURL(blob);
+                result.classList.remove('hidden');
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
